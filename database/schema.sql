@@ -38,6 +38,11 @@ CREATE TABLE facts_mgnrega_monthly (
     wages_paid_within_15days DECIMAL(15, 2),
     pending_wage_amount DECIMAL(15, 2),
     
+    -- Expenditure metrics
+    material_expenditure DECIMAL(15, 2),
+    admin_expenditure DECIMAL(15, 2),
+    total_expenditure DECIMAL(15, 2),
+    
     -- Works metrics
     works_started INTEGER,
     works_ongoing INTEGER,

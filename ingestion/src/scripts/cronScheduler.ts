@@ -1,7 +1,9 @@
 import cron from 'node-cron';
+import type { ScheduledTask } from 'node-cron';
 import express from 'express';
 import dotenv from 'dotenv';
 import logger from '../lib/logger';
+import { ingestAllData } from '../scripts/fetch_ogd_data';
 
 dotenv.config();
 
@@ -22,6 +24,8 @@ interface CronJobStatus {
   totalRuns: number;
   failedRuns: number;
   nextRunTime: Date | null;
+  lastError: string | null;
+  recordsIngested: number;
 }
 
 const jobStatus: CronJobStatus = {
@@ -32,22 +36,12 @@ const jobStatus: CronJobStatus = {
   totalRuns: 0,
   failedRuns: 0,
   nextRunTime: null,
+  lastError: null,
+  recordsIngested: 0,
 };
 
 // ==========================================
-// INGESTION TASK (Replace with your logic)
-// ==========================================
-
-async function performIngestion(): Promise<void> {
-  logger.info('📥 Running data ingestion...');
-  // TODO: Add your actual ingestion logic here
-  // Example:
-  // await ingestAllData();
-  logger.info('✅ Data ingestion completed');
-}
-
-// ==========================================
-// MONTHLY INGESTION TASK
+// MONTHLY INGESTION TASK 
 // ==========================================
 
 async function monthlyIngestionTask(): Promise<void> {
@@ -58,6 +52,7 @@ async function monthlyIngestionTask(): Promise<void> {
   }
 
   jobStatus.isRunning = true;
+  jobStatus.lastRunStatus = 'RUNNING';
   const startTime = Date.now();
   jobStatus.totalRuns += 1;
 
@@ -68,29 +63,37 @@ async function monthlyIngestionTask(): Promise<void> {
   });
 
   try {
-    // Run the ingestion
-    await performIngestion();
+    // Call your ingestion function
+    logger.info('📥 Calling ingestAllData()...');
+    await ingestAllData();
 
     const duration = Date.now() - startTime;
     jobStatus.lastRunTime = new Date();
     jobStatus.lastRunStatus = 'SUCCESS';
+    jobStatus.lastError = null;
 
     logger.info('✅ Monthly ingestion job COMPLETED', {
       durationMs: duration,
       durationSec: (duration / 1000).toFixed(2),
       timestamp: new Date().toISOString(),
+      jobStatus,
     });
   } catch (error) {
     const duration = Date.now() - startTime;
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+
     jobStatus.lastRunTime = new Date();
     jobStatus.lastRunStatus = 'FAILED';
     jobStatus.failedRuns += 1;
+    jobStatus.lastError = errorMessage;
 
     logger.error('❌ Monthly ingestion job FAILED', {
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
       stack: error instanceof Error ? error.stack : undefined,
       durationMs: duration,
       failureCount: jobStatus.failedRuns,
+      jobStatus,
     });
   } finally {
     jobStatus.isRunning = false;
@@ -98,10 +101,26 @@ async function monthlyIngestionTask(): Promise<void> {
 }
 
 // ==========================================
+// CALCULATE NEXT RUN TIME
+// ==========================================
+
+function calculateNextRunTime(): Date | null {
+  try {
+    const schedule = process.env.CRON_SCHEDULE || '0 2 1,15 * *';
+    // This is a simple calculation - in production, use a cron parser library
+    const now = new Date();
+    const nextRun = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Approximate: next day
+    return nextRun;
+  } catch {
+    return null;
+  }
+}
+
+// ==========================================
 // START CRON SCHEDULER
 // ==========================================
 
-function startCronScheduler(): import('node-cron').ScheduledTask | null {
+function startCronScheduler(): ScheduledTask | null {
   try {
     const schedule = process.env.CRON_SCHEDULE || '0 2 1,15 * *';
 
@@ -112,9 +131,12 @@ function startCronScheduler(): import('node-cron').ScheduledTask | null {
 
     const task = cron.schedule(schedule, monthlyIngestionTask);
 
+    jobStatus.nextRunTime = calculateNextRunTime();
+
     logger.info('✅ Scheduler STARTED SUCCESSFULLY', {
       status: 'ACTIVE',
       schedule,
+      nextRunTime: jobStatus.nextRunTime,
     });
 
     return task;
@@ -132,26 +154,48 @@ function startCronScheduler(): import('node-cron').ScheduledTask | null {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    service: 'mgnrega-ingestion',
+  res.json({
+    status: 'OK',
+    service: 'mgnrega-ingestion-scheduler',
     timestamp: new Date().toISOString(),
     port: PORT,
+    jobStatus,
   });
 });
 
 // Get cron job status
 app.get('/status', (req, res) => {
-  res.json(jobStatus);
+  res.json({
+    ...jobStatus,
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+  });
 });
 
 // Manually trigger ingestion
 app.post('/trigger', async (req, res) => {
   try {
-    logger.info('📌 Manual ingestion triggered');
-    await monthlyIngestionTask();
-    res.json({ 
+    logger.info('📌 Manual ingestion triggered via API');
+
+    if (jobStatus.isRunning) {
+      return res.status(409).json({
+        error: 'Ingestion job already running',
+        message: 'Wait for the current job to complete',
+      });
+    }
+
+    // Run ingestion in background (non-blocking)
+    monthlyIngestionTask()
+      .then(() => {
+        logger.info('✅ Triggered ingestion completed successfully');
+      })
+      .catch((err) => {
+        logger.error('❌ Triggered ingestion failed:', err);
+      });
+
+    res.json({
       message: 'Ingestion triggered successfully',
+      status: 'STARTED',
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -163,11 +207,38 @@ app.post('/trigger', async (req, res) => {
   }
 });
 
+// Get detailed statistics
+app.get('/stats', async (req, res) => {
+  res.json({
+    scheduler: {
+      status: jobStatus.isRunning ? 'RUNNING' : 'IDLE',
+      totalRuns: jobStatus.totalRuns,
+      successfulRuns: jobStatus.totalRuns - jobStatus.failedRuns,
+      failedRuns: jobStatus.failedRuns,
+      successRate:
+        jobStatus.totalRuns > 0
+          ? (
+              ((jobStatus.totalRuns - jobStatus.failedRuns) /
+                jobStatus.totalRuns) *
+              100
+            ).toFixed(2) + '%'
+          : 'N/A',
+    },
+    lastRun: {
+      time: jobStatus.lastRunTime,
+      status: jobStatus.lastRunStatus,
+      error: jobStatus.lastError,
+    },
+    nextRun: jobStatus.nextRunTime,
+    schedule: process.env.CRON_SCHEDULE || '0 2 1,15 * *',
+  });
+});
+
 // ==========================================
 // START SERVER AND SCHEDULER
 // ==========================================
 
-let cronTask: ReturnType<typeof cron.schedule> | null = null;
+let cronTask: ScheduledTask | null = null;
 
 const server = app.listen(PORT, () => {
   logger.info('🚀 INGESTION SERVICE STARTED', {
@@ -181,15 +252,16 @@ const server = app.listen(PORT, () => {
     cronTask = startCronScheduler();
   } else {
     logger.info('ℹ️ Scheduler DISABLED', {
-      info: 'Set ENABLE_SCHEDULER=true to enable',
+      info: 'Set ENABLE_SCHEDULER=true in .env to enable',
     });
   }
 
   // Print available endpoints
   logger.info('📍 Available Endpoints:', {
-    health: 'GET http://localhost:3001/health',
-    status: 'GET http://localhost:3001/status',
-    trigger: 'POST http://localhost:3001/trigger',
+    health: `GET http://localhost:${PORT}/health`,
+    status: `GET http://localhost:${PORT}/status`,
+    stats: `GET http://localhost:${PORT}/stats`,
+    trigger: `POST http://localhost:${PORT}/trigger`,
   });
 });
 
@@ -199,12 +271,12 @@ const server = app.listen(PORT, () => {
 
 function gracefulShutdown(signal: string) {
   logger.info(`📍 ${signal} received, shutting down gracefully...`);
-  
+
   if (cronTask) {
     cronTask.stop();
     logger.info('⏹️ Cron scheduler stopped');
   }
-  
+
   server.close(() => {
     logger.info('✅ Server closed successfully');
     process.exit(0);

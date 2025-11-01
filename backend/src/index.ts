@@ -197,6 +197,9 @@ app.get('/api/v1/districts/:districtCode/summary', async (req, res) => {
 // ==========================================
 // GET rankings with composite score (with cache)
 // ==========================================
+// ==========================================
+// GET rankings with composite score (with cache)
+// ==========================================
 app.get('/api/v1/rankings', async (req: Request, res: Response) => {
   try {
     const { month, year } = req.query;
@@ -205,73 +208,39 @@ app.get('/api/v1/rankings', async (req: Request, res: Response) => {
     const selectedYear = (year as string) || '2025-2026';
     const cacheKey = `rankings_${selectedYear}_${selectedMonth}`;
 
-    // Check cache first
     const cachedData = await getCache(cacheKey);
     if (cachedData) {
       logger.info(`✅ Cache HIT: ${cacheKey}`);
-      return res.json({
-        ...cachedData,
-        source: 'cache',
-      });
+      return res.json({ ...cachedData, source: 'cache' });
     }
 
     logger.info(`❌ Cache MISS: ${cacheKey} - querying database`);
 
     const query = `
-      WITH district_metrics AS (
-        SELECT 
-          d.name,
-          d.name_hi,
-          d.district_code,
-          f.person_days,
-          f.households_provided,
-          f.avg_wage_rate,
-          f.works_completed,
-          f.works_ongoing,
-          f.women_persondays,
-          CASE 
-            WHEN (f.works_completed + f.works_ongoing) > 0 
-            THEN (f.works_completed::float / (f.works_completed + f.works_ongoing)) * 100 
-            ELSE 0 
-          END as completion_rate,
-          CASE 
-            WHEN f.person_days > 0 
-            THEN (f.women_persondays::float / f.person_days) * 100 
-            ELSE 0 
-          END as women_participation_rate
-        FROM facts_mgnrega_monthly f
-        JOIN districts d ON f.district_code = d.district_code
-        WHERE f.month = $1 AND f.fin_year = $2
-      ),
-      normalized_scores AS (
-        SELECT 
-          *,
-          (person_days::float / NULLIF(MAX(person_days) OVER (), 0)) * 10 as person_days_score,
-          (households_provided::float / NULLIF(MAX(households_provided) OVER (), 0)) * 10 as households_score,
-          (avg_wage_rate::float / NULLIF(MAX(avg_wage_rate) OVER (), 0)) * 10 as wage_score,
-          (completion_rate / 10.0) as completion_score,
-          (women_participation_rate / 10.0) as women_score
-        FROM district_metrics
-      )
       SELECT 
-        name,
-        name_hi,
-        district_code,
-        person_days,
-        households_provided,
-        avg_wage_rate,
-        works_completed,
-        works_ongoing,
-        completion_rate,
-        women_participation_rate,
-        ROUND(
-          (person_days_score * 0.30) +
-          (households_score * 0.25) +
-          (completion_score * 0.20) +
-          (women_score * 0.15) +
-          (wage_score * 0.10)
-        , 2) as performance_score
-      FROM normalized_scores
+        d.name,
+        d.name_hi,
+        d.district_code,
+        f.person_days,
+        f.households_provided,
+        f.avg_wage_rate,
+        f.works_completed,
+        f.works_ongoing,
+        f.women_persondays,
+        CASE 
+          WHEN (f.works_completed + f.works_ongoing) > 0 
+          THEN (f.works_completed::float / (f.works_completed + f.works_ongoing)) * 100 
+          ELSE 0 
+        END as completion_rate,
+        CASE 
+          WHEN f.person_days > 0 
+          THEN (f.women_persondays::float / f.person_days) * 100 
+          ELSE 0 
+        END as women_participation_rate,
+        (f.person_days + f.households_provided + f.avg_wage_rate) as performance_score
+      FROM facts_mgnrega_monthly f
+      JOIN districts d ON f.district_code = d.district_code
+      WHERE f.month = $1 AND f.fin_year = $2
       ORDER BY performance_score DESC
       LIMIT 5
     `;
@@ -291,19 +260,18 @@ app.get('/api/v1/rankings', async (req: Request, res: Response) => {
       },
     };
 
-    // Store in cache (6 hours for rankings)
     const ttl = parseInt(process.env.CACHE_RANKINGS_TTL || '21600');
     await setCache(cacheKey, responseData, ttl);
 
-    res.json({
-      ...responseData,
-      source: 'database',
-    });
+    res.json({ ...responseData, source: 'database' });
   } catch (error) {
     logger.error('Error fetching rankings:', error);
     res.status(500).json({ error: 'Failed to fetch rankings' });
   }
 });
+
+
+
 
 // ==========================================
 // GET district trend data (with cache)
