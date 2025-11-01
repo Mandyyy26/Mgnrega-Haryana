@@ -1,6 +1,6 @@
 import { Language } from '@/types';
 import Tooltip from './Tooltip';
-import { LucideIcon } from 'lucide-react';
+
 
 interface SimplifiedMetricCardProps {
   icon: string;
