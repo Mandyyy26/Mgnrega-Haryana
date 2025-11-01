@@ -18,6 +18,7 @@ export default function Home() {
   const [topPerformers, setTopPerformers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -29,10 +30,12 @@ export default function Home() {
         
         setDistricts(Array.isArray(districtsData) ? districtsData : districtsData.districts || []);
         setTopPerformers(Array.isArray(rankingsData) ? rankingsData : rankingsData.rankings || []);
+        setError(null);
       } catch (error) {
         console.error('Error fetching data:', error);
         setDistricts([]);
         setTopPerformers([]);
+        setError('Backend API not available yet. Please check back later.');
       } finally {
         setLoading(false);
       }
@@ -48,8 +51,11 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Loading data...</p>
+        </div>
       </div>
     );
   }
@@ -66,8 +72,19 @@ export default function Home() {
         {/* Header */}
         <Header language={language} />
 
-        {/* Top 5 Performers */}
-        <TopPerformers performers={topPerformers} language={language} />
+        {/* Error Banner */}
+        {error && (
+          <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/30 border-l-4 border-amber-500 rounded">
+            <p className="text-amber-800 dark:text-amber-200">
+              ℹ️ {error}
+            </p>
+          </div>
+        )}
+
+        {/* Top 5 Performers - Only if data exists */}
+        {topPerformers.length > 0 && (
+          <TopPerformers performers={topPerformers} language={language} />
+        )}
 
         {/* Auto-Detect District */}
         <div className="mb-8">
@@ -93,37 +110,38 @@ export default function Home() {
           </div>
 
           {/* District Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredDistricts.map((district) => (
-              <DistrictCard
-                key={district.district_code}
-                code={district.district_code}
-                name={district.name}
-                nameHi={district.name_hi}
-                language={language}
-              />
-            ))}
-          </div>
-
-
-          <div className="mt-12 text-center text-sm text-gray-600 dark:text-gray-400">
-          <p className="mb-2">
-            {language === 'en' 
-              ? '🇮🇳 Data from Open Government Data Platform (data.gov.in)'
-              : '🇮🇳 ओपन गवर्नमेंट डेटा प्लेटफॉर्म से डेटा (data.gov.in)'}
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-500">
-            {language === 'en'
-              ? 'Made with ❤️ for transparent governance'
-              : 'पारदर्शी शासन के लिए ❤️ से बनाया गया'}
-          </p>
-        </div>
-
-          {filteredDistricts.length === 0 && (
+          {districts.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredDistricts.map((district) => (
+                <DistrictCard
+                  key={district.district_code}
+                  code={district.district_code}
+                  name={district.name}
+                  nameHi={district.name_hi}
+                  language={language}
+                />
+              ))}
+            </div>
+          ) : (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-              {language === 'en' ? 'No districts found' : 'कोई जिला नहीं मिला'}
+              {language === 'en' 
+                ? 'No districts available - backend API is being set up' 
+                : 'कोई जिला उपलब्ध नहीं है'}
             </div>
           )}
+
+          <div className="mt-12 text-center text-sm text-gray-600 dark:text-gray-400">
+            <p className="mb-2">
+              {language === 'en' 
+                ? '🇮🇳 Data from Open Government Data Platform (data.gov.in)'
+                : '🇮🇳 ओपन गवर्नमेंट डेटा प्लेटफॉर्म से डेटा (data.gov.in)'}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-500">
+              {language === 'en'
+                ? 'Made with ❤️ for transparent governance'
+                : 'पारदर्शी शासन के लिए ❤️ से बनाया गया'}
+            </p>
+          </div>
         </div>
       </div>
     </main>
