@@ -18,7 +18,7 @@ if (process.env.REDIS_PASSWORD) {
 const redisClient = createClient(redisConfig);
 
 // Connect to Redis
-redisClient.on('error', (err) => {
+redisClient.on('error', (err: Error) => {
   logger.error('Redis Client Error:', err);
 });
 

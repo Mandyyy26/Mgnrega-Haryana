@@ -1,11 +1,11 @@
-import express from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import logger from '../lib/logger.js';
 import { deleteCache, clearAllCache, deleteCachePattern } from '../lib/cache.js';
 
 const router = express.Router();
 
 // Admin authentication middleware
-const adminAuth = (req: any, res: any, next: any) => {
+const adminAuth = (req: Request, res: Response, next: NextFunction) => {
   const apiKey = req.headers['x-api-key'];
   if (apiKey !== process.env.ADMIN_API_KEY) {
     logger.warn(`Unauthorized admin access attempt with key: ${apiKey}`);
@@ -17,7 +17,7 @@ const adminAuth = (req: any, res: any, next: any) => {
 // ==========================================
 // Get cron job status from ingestion service
 // ==========================================
-router.get('/ingestion-status', adminAuth, async (req, res) => {
+router.get('/ingestion-status', adminAuth, async (req: Request, res: Response) => {
   try {
     const response = await fetch('http://localhost:3002/status');
     if (!response.ok) {
@@ -41,7 +41,7 @@ router.get('/ingestion-status', adminAuth, async (req, res) => {
 // ==========================================
 // Trigger ingestion manually
 // ==========================================
-router.post('/trigger-ingestion', adminAuth, async (req,res) => {
+router.post('/trigger-ingestion', adminAuth, async (req: Request, res: Response) => {
   try {
     logger.info('🚀 Manual ingestion triggered');
     const response = await fetch('http://localhost:3002/trigger', {
@@ -61,7 +61,7 @@ router.post('/trigger-ingestion', adminAuth, async (req,res) => {
 // ==========================================
 // Delete specific cache key
 // ==========================================
-router.delete('/cache/:key', adminAuth, async (req,res) => {
+router.delete('/cache/:key', adminAuth, async (req: Request, res: Response) => {
   try {
     const { key } = req.params;
     await deleteCache(key);
@@ -76,7 +76,7 @@ router.delete('/cache/:key', adminAuth, async (req,res) => {
 // ==========================================
 // Clear all cache
 // ==========================================
-router.delete('/cache', adminAuth, async (req,res) => {
+router.delete('/cache', adminAuth, async (req: Request, res: Response) => {
   try {
     await clearAllCache();
     logger.info('🔥 All cache cleared');
@@ -90,7 +90,7 @@ router.delete('/cache', adminAuth, async (req,res) => {
 // ==========================================
 // Cache statistics
 // ==========================================
-router.get('/cache-stats', adminAuth, async (req,res) => {
+router.get('/cache-stats', adminAuth, async (req: Request, res: Response) => {
   try {
     logger.info('📊 Cache stats requested');
     res.json({
@@ -115,7 +115,7 @@ router.get('/cache-stats', adminAuth, async (req,res) => {
 // Invalidate cache after data ingestion
 // (Called by ingestion service)
 // ==========================================
-router.post('/refresh-after-ingestion', async (req,res) => {
+router.post('/refresh-after-ingestion', async (req: Request, res: Response) => {
   try {
     // Delete all relevant cache keys
     await deleteCache('districts_haryana_all');

@@ -24,7 +24,7 @@ app.use(cors());
 app.use(express.json());
 
 // Health check
-app.get('/health', async (req, res) => {
+app.get('/health', async (req: Request, res: Response) => {
   try {
     await pool.query('SELECT 1');
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -39,7 +39,7 @@ app.use('/api/admin', adminRouter);
 // ==========================================
 // GET all districts for Haryana (with cache)
 // ==========================================
-app.get('/api/v1/districts', async (req, res) => {
+app.get('/api/v1/districts', async (req: Request, res: Response) => {
   try {
     const cacheKey = 'districts_haryana_all';
 
@@ -80,7 +80,7 @@ app.get('/api/v1/districts', async (req, res) => {
 // ==========================================
 // GET district summary with month support (with cache)
 // ==========================================
-app.get('/api/v1/districts/:districtCode/summary', async (req, res) => {
+app.get('/api/v1/districts/:districtCode/summary', async (req: Request, res: Response) => {
   const { districtCode } = req.params;
   const { month, year } = req.query;
 
