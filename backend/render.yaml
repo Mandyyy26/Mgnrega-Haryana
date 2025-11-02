@@ -26,16 +26,16 @@ services:
       - key: DB_PORT
         value: "5432"
 
-      # Redis (set up free tier on Render first)
+      # Redis
       - key: REDIS_HOST
-        value: red-cukupwocv2pcv1fjpf5g.c20.us-east-1-2.ec2.cloud.redislabs.com
+        value: handy-aphid-32428.upstash.io
 
       - key: REDIS_PORT
-        value: "16379"
+        value: "6379"
 
       - key: REDIS_PASSWORD
         scope: run
-        value: your_redis_password_here
+        value: AX6sAAIncDJkMzY5ODFiMDM0ZjM0MzZmYWI5NmEwNzBjNGFhYTFlOHAyMzI0Mjg
 
       # Server Config
       - key: PORT
@@ -50,7 +50,7 @@ services:
       # API Keys
       - key: ADMIN_API_KEY
         scope: run
-        value: your_secure_admin_key_here
+        value: secret_key
 
       # Cache TTL
       - key: CACHE_DISTRICTS_TTL
