@@ -10,13 +10,26 @@ const OGD_API_KEY = process.env.OGD_API_KEY || '';
 const RESOURCE_ID = process.env.OGD_RESOURCE_ID;
 
 
-const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASSWORD,
-  port: parseInt(process.env.DB_PORT || '5432'),
-});
+const getDatabaseConfig = () => {
+  // If DATABASE_URL is provided (Render), use it
+  if (process.env.DATABASE_URL) {
+    return {
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false } // For Render production
+    };
+  }
+
+  // Otherwise, use individual credentials (local)
+  return {
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    password: process.env.DB_PASSWORD,
+    port: parseInt(process.env.DB_PORT || '5432'),
+  };
+};
+
+const pool = new Pool(getDatabaseConfig());
 
 
 interface MGNREGARecord {
