@@ -14,8 +14,7 @@
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": false,
     "sourceMap": true,
-    "declaration": true,
-    "types": ["node"]
+    "declaration": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
