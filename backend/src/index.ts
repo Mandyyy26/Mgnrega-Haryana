@@ -11,15 +11,27 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3001;
 
-// Database connection
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
   database: process.env.DB_NAME || 'mgnrega_haryana',
   password: process.env.DB_PASSWORD,
   port: parseInt(process.env.DB_PORT || '5432'),
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
+pool.on('error', (err) => {
+  logger.error('[backend]', `Unexpected error on idle client: ${err.message}`);
+});
+
+// Test connection
+pool.query('SELECT NOW()', (err, res) => {
+  if (err) {
+    logger.error('[backend]', `Database connection error: ${err.message}`);
+  } else {
+    logger.info('[backend]', '✅ PostgreSQL Connected Successfully');
+  }
+});
 app.use(cors());
 app.use(express.json());
 
