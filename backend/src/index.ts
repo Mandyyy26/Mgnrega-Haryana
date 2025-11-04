@@ -291,10 +291,7 @@ app.get('/api/v1/rankings', async (req: Request, res: Response) => {
 app.get('/api/v1/districts/:code/trend', async (req: Request, res: Response) => {
   try {
     const { code } = req.params;
-    const { year } = req.query;
-
-    const selectedYear = (year as string) || '2024-2025';
-    const cacheKey = `trend_${code}_${selectedYear}`;
+    const cacheKey = `trend_${code}_last_6_months`;
 
     // Check cache first
     const cachedData = await getCache(cacheKey);
@@ -308,23 +305,54 @@ app.get('/api/v1/districts/:code/trend', async (req: Request, res: Response) => 
 
     logger.info(`❌ Cache MISS: ${cacheKey} - querying database`);
 
+    // Get last 6 months of data (regardless of financial year)
     const query = `
+      WITH latest_data AS (
+        SELECT 
+          fin_year,
+          month,
+          person_days,
+          households_provided,
+          avg_wage_rate,
+          ROW_NUMBER() OVER (
+            ORDER BY fin_year DESC, month DESC
+          ) as rn
+        FROM facts_mgnrega_monthly
+        WHERE district_code = $1
+          AND (person_days IS NOT NULL OR households_provided IS NOT NULL)
+        ORDER BY fin_year DESC, month DESC
+        LIMIT 6
+      )
       SELECT 
+        fin_year,
         month,
         person_days,
         households_provided,
         avg_wage_rate
-      FROM facts_mgnrega_monthly
-      WHERE district_code = $1 AND fin_year = $2
-      ORDER BY month ASC
+      FROM latest_data
+      ORDER BY fin_year ASC, month ASC
     `;
 
-    const result = await pool.query(query, [code, selectedYear]);
+    const result = await pool.query(query, [code]);
+
+    // Map months to readable names
+    const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    const trend = result.rows.map(row => ({
+      ...row,
+      month_name: monthNames[row.month],
+      display_label: `${monthNames[row.month]} ${row.fin_year.split('-')[0]}`
+    }));
 
     const responseData = {
-      trend: result.rows,
+      trend: trend,
       district_code: code,
-      year: selectedYear,
+      label: 'Last 6 Months',
+      total_months: trend.length,
+      date_range: trend.length > 0 
+        ? `${trend[0].display_label} - ${trend[trend.length - 1].display_label}`
+        : 'No data available',
     };
 
     // Store in cache (1 hour for trends)
@@ -340,6 +368,7 @@ app.get('/api/v1/districts/:code/trend', async (req: Request, res: Response) => 
     res.status(500).json({ error: 'Failed to fetch trend data' });
   }
 });
+
 
 // ==========================================
 // Detect district from coordinates (with cache)
